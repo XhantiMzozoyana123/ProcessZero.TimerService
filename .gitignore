@@ -1,0 +1,33 @@
+# Build results
+bin/
+obj/
+publish/
+
+# User-specific files
+*.user
+*.suo
+*.userprefs
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment variables (may contain secrets)
+appsettings.Development.json
+appsettings.Local.json
+
+# Test results
+TestResults/
+*.trx
+
+# Packages
+*.nupkg
+packages/
+
+# Logs
+*.log
+logs/
