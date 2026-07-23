@@ -206,7 +206,7 @@ api.MapPost("/wallet/check-balance", async (CheckBalanceRequest req, HttpClient 
 // Hangfire recurring job
 RecurringJob.AddOrUpdate<ConsumptionBackgroundJob>(
     "process-active-session-consumption",
-    job => job.ProcessActiveSessionsAsync(mainApiUrl, app.Logger),
+    job => job.ProcessActiveSessionsAsync(mainApiUrl),
     Cron.MinuteInterval(1));
 
 app.Run();
