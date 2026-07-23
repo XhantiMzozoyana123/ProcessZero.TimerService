@@ -1,6 +1,3 @@
-using Hangfire;
-using Hangfire.Dashboard;
-using Hangfire.MySql;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
@@ -9,6 +6,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ProcessZero.TimerService.Dtos;
 using ProcessZero.TimerService.Jobs;
+using Timer = System.Threading.Timer;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,23 +20,6 @@ builder.Services.AddHttpClient();
 builder.Services.AddMemoryCache();
 builder.Services.AddLogging();
 
-// Hangfire with its own MySQL storage for jobs only
-builder.Services.AddHangfire(config =>
-{
-    config.SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
-          .UseSimpleAssemblyNameTypeSerializer()
-          .UseRecommendedSerializerSettings()
-          .UseStorage(new MySqlStorage(builder.Configuration.GetConnectionString("HangfireConnection") ?? builder.Configuration.GetConnectionString("DefaultConnection") ?? "", new MySqlStorageOptions
-          {
-              TablesPrefix = "HangfireTimer"
-          }));
-});
-
-builder.Services.AddHangfireServer(options =>
-{
-    options.WorkerCount = 2;
-});
-
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(p =>
@@ -51,11 +32,6 @@ var app = builder.Build();
 
 app.UseCors();
 app.UseRouting();
-
-app.UseHangfireDashboard("/hangfire", new DashboardOptions
-{
-    Authorization = new[] { new HangfireDashboardNoAuthFilter() }
-});
 
 app.MapGet("/health", () => Results.Ok(new
 {
@@ -203,15 +179,22 @@ api.MapPost("/wallet/check-balance", async (CheckBalanceRequest req, HttpClient 
     }
 });
 
-// Hangfire recurring job
-RecurringJob.AddOrUpdate<ConsumptionBackgroundJob>(
-    "process-active-session-consumption",
-    job => job.ProcessActiveSessionsAsync(mainApiUrl),
-    Cron.MinuteInterval(1));
+// Background timer: every minute, process active sessions for credit consumption
+var timer = new Timer(async _ =>
+{
+    try
+    {
+        await new ConsumptionBackgroundJob(app.Logger).ProcessActiveSessionsAsync(mainApiUrl);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Error in background consumption job");
+    }
+}, null, TimeSpan.Zero, TimeSpan.FromMinutes(1));
 
 app.Run();
 
-// In-memory session store (replace with Redis in production)
+// In-memory session store
 public static class SessionManager
 {
     private static readonly Dictionary<string, UserSession> _sessions = new();
@@ -258,9 +241,4 @@ public class UserSession
     public DateTime StartedAt { get; set; }
     public DateTime LastHeartbeat { get; set; }
     public string? DeviceInfo { get; set; }
-}
-
-public class HangfireDashboardNoAuthFilter : IDashboardAuthorizationFilter
-{
-    public bool Authorize(DashboardContext context) => true;
 }

@@ -3,16 +3,13 @@ using Microsoft.Extensions.Logging;
 namespace ProcessZero.TimerService.Jobs;
 
 /// <summary>
-/// Hangfire background job that periodically processes all active usage sessions
-/// and consumes credits based on actual elapsed time.
-/// This runs in its own Docker container, independent of the main API.
-/// Communicates with main API via HTTP for wallet operations.
+/// Processes active usage sessions and consumes credits via HTTP calls to the main API.
 /// </summary>
 public class ConsumptionBackgroundJob
 {
-    private readonly ILogger<ConsumptionBackgroundJob> _logger;
+    private readonly ILogger _logger;
 
-    public ConsumptionBackgroundJob(ILogger<ConsumptionBackgroundJob> logger)
+    public ConsumptionBackgroundJob(ILogger logger)
     {
         _logger = logger;
     }
