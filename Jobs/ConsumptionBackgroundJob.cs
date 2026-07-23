@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace ProcessZero.TimerService.Jobs;
@@ -8,10 +9,13 @@ namespace ProcessZero.TimerService.Jobs;
 public class ConsumptionBackgroundJob
 {
     private readonly ILogger _logger;
+    private readonly string _timerApiKey;
 
-    public ConsumptionBackgroundJob(ILogger logger)
+    public ConsumptionBackgroundJob(ILogger logger, IConfiguration configuration)
     {
         _logger = logger;
+        _timerApiKey = configuration["TimerApiKey"] 
+            ?? throw new InvalidOperationException("TimerApiKey is required.");
     }
 
     /// <summary>
@@ -25,6 +29,7 @@ public class ConsumptionBackgroundJob
             _logger.LogInformation("Starting active session consumption processing at {Time}", DateTime.UtcNow);
 
             using var http = new HttpClient();
+            http.DefaultRequestHeaders.Add("X-Timer-Api-Key", _timerApiKey);
             var sessions = SessionManager.GetActiveSessions();
             var processed = 0;
 

@@ -6,6 +6,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ProcessZero.TimerService.Dtos;
 using ProcessZero.TimerService.Jobs;
+using System.Net.Http;
 using Timer = System.Threading.Timer;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -19,6 +20,9 @@ var mainApiUrl = builder.Configuration["MainApi:BaseUrl"]
 builder.Services.AddHttpClient();
 builder.Services.AddMemoryCache();
 builder.Services.AddLogging();
+
+// Configure base addresses for service communication
+builder.Services.AddHttpClient("MainApi");
 
 builder.Services.AddCors(options =>
 {
@@ -110,7 +114,11 @@ api.MapGet("/sessions/active", async ([AsParameters] UserQuery q, HttpClient htt
 
     try
     {
-        var remainingHours = await http.GetFromJsonAsync<RemainingHoursResponse>($"{mainApiUrl}/api/credit/remaining-hours", cancellationToken: CancellationToken.None);
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"{mainApiUrl}/api/credit/remaining-hours");
+        request.Headers.Add("X-Timer-Api-Key", timerApiKey);
+        using var response = await http.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+        var remainingHours = await response.Content.ReadFromJsonAsync<RemainingHoursResponse>(cancellationToken: CancellationToken.None);
         return Results.Ok(new { session = new { session.Id, session.StartedAt, remainingHours = remainingHours?.RemainingHours ?? 0 } });
     }
     catch
@@ -127,7 +135,11 @@ api.MapGet("/remaining-hours", async ([AsParameters] UserQuery q, HttpClient htt
 
     try
     {
-        var result = await http.GetFromJsonAsync<RemainingHoursResponse>($"{mainApiUrl}/api/credit/remaining-hours", cancellationToken: CancellationToken.None);
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"{mainApiUrl}/api/credit/remaining-hours");
+        request.Headers.Add("X-Timer-Api-Key", timerApiKey);
+        using var response = await http.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<RemainingHoursResponse>(cancellationToken: CancellationToken.None);
         if (result != null)
             return Results.Ok(result);
     }
@@ -147,7 +159,10 @@ api.MapPost("/wallet/consume", async (WalletOperationRequest req, HttpClient htt
 
     try
     {
-        var response = await http.PostAsJsonAsync($"{mainApiUrl}/api/credit/consume", req, CancellationToken.None);
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{mainApiUrl}/api/credit/consume");
+        request.Headers.Add("X-Timer-Api-Key", timerApiKey);
+        request.Content = JsonContent.Create(req);
+        using var response = await http.SendAsync(request);
         response.EnsureSuccessStatusCode();
         var result = await response.Content.ReadFromJsonAsync<WalletOperationResponse>(cancellationToken: CancellationToken.None);
         return Results.Ok(result);
@@ -167,7 +182,10 @@ api.MapPost("/wallet/check-balance", async (CheckBalanceRequest req, HttpClient 
 
     try
     {
-        var response = await http.PostAsJsonAsync($"{mainApiUrl}/api/credit/check", req.RequiredCredits, CancellationToken.None);
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{mainApiUrl}/api/credit/check");
+        request.Headers.Add("X-Timer-Api-Key", timerApiKey);
+        request.Content = JsonContent.Create(req.RequiredCredits);
+        using var response = await http.SendAsync(request);
         response.EnsureSuccessStatusCode();
         var result = await response.Content.ReadFromJsonAsync<CheckBalanceResponse>(cancellationToken: CancellationToken.None);
         return Results.Ok(result);
@@ -184,7 +202,8 @@ var timer = new Timer(async _ =>
 {
     try
     {
-        await new ConsumptionBackgroundJob(app.Logger).ProcessActiveSessionsAsync(mainApiUrl);
+        await new ConsumptionBackgroundJob(app.Logger, app.Services.GetRequiredService<IConfiguration>())
+            .ProcessActiveSessionsAsync(mainApiUrl);
     }
     catch (Exception ex)
     {
